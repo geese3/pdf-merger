@@ -4,10 +4,17 @@ from tkinter import filedialog, messagebox
 from PyPDF2 import PdfMerger, PdfReader, PdfWriter
 import customtkinter as ctk
 import platform
+import shutil
+import tempfile
 
-# Windows에서만 windnd를 import
+# Windows에서만 windnd를 import 시도
+WINDOWS_DND_ENABLED = False
 if platform.system() == "Windows":
-    import windnd
+    try:
+        import windnd
+        WINDOWS_DND_ENABLED = True
+    except ImportError:
+        print("windnd 모듈을 찾을 수 없습니다. 드래그 앤 드롭 기능이 비활성화됩니다.")
 
 class PDFMergerApp:
     def __init__(self):
@@ -20,11 +27,25 @@ class PDFMergerApp:
         ctk.set_default_color_theme("blue")
         
         self.pdf_files = []
+        self.temp_dir = tempfile.mkdtemp()  # 임시 디렉토리 생성
+        
         self.setup_ui()
         
         # Windows에서만 드래그앤드롭 설정
-        if platform.system() == "Windows":
+        if WINDOWS_DND_ENABLED:
             windnd.hook_dropfiles(self.file_listbox, func=self.handle_drop)
+            
+        # 프로그램 종료 시 임시 파일 정리
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+    
+    def on_closing(self):
+        try:
+            if os.path.exists(self.temp_dir):
+                shutil.rmtree(self.temp_dir, ignore_errors=True)
+        except Exception as e:
+            print(f"임시 파일 정리 중 오류 발생: {e}")
+        finally:
+            self.root.destroy()
     
     def setup_ui(self):
         # 파일 선택 프레임
@@ -51,12 +72,12 @@ class PDFMergerApp:
         self.file_listbox.pack(pady=10, fill="x")
         
         # Windows에서만 드래그앤드롭 안내 텍스트 추가
-        if platform.system() == "Windows":
+        if WINDOWS_DND_ENABLED:
             self.file_listbox.insert(tk.END, "여기에 PDF 파일을 드래그앤드롭하세요")
             self.file_listbox.itemconfig(0, {'fg': 'gray'})
         
         # 안내 텍스트
-        if platform.system() == "Windows":
+        if WINDOWS_DND_ENABLED:
             info_text = "파일 선택 버튼을 클릭하거나 PDF 파일을 드래그앤드롭하세요"
         else:
             info_text = "파일 선택 버튼을 클릭하여 PDF 파일을 선택하세요"
@@ -131,20 +152,33 @@ class PDFMergerApp:
             self.update_file_list()
     
     def handle_drop(self, files):
-        valid_files = []
-        for file in files:
-            # windnd는 bytes로 경로를 반환하므로 디코딩 필요
-            file_path = file.decode('gbk')  # 한글 Windows의 경우 'gbk' 인코딩 사용
-            if file_path.lower().endswith('.pdf'):
-                valid_files.append(file_path)
-        
-        if valid_files:
-            self.pdf_files.extend(valid_files)
-            self.update_file_list()
+        try:
+            valid_files = []
+            for file in files:
+                try:
+                    # 다양한 인코딩 시도
+                    for encoding in ['utf-8', 'cp949', 'gbk']:
+                        try:
+                            file_path = file.decode(encoding)
+                            if os.path.exists(file_path) and file_path.lower().endswith('.pdf'):
+                                valid_files.append(file_path)
+                                break
+                        except UnicodeDecodeError:
+                            continue
+                except Exception as e:
+                    print(f"파일 경로 디코딩 중 오류 발생: {e}")
+                    continue
+            
+            if valid_files:
+                self.pdf_files.extend(valid_files)
+                self.update_file_list()
+        except Exception as e:
+            print(f"드래그 앤 드롭 처리 중 오류 발생: {e}")
+            messagebox.showerror("오류", "파일을 추가하는 중 오류가 발생했습니다.")
     
     def update_file_list(self):
         self.file_listbox.delete(0, tk.END)
-        if platform.system() == "Windows" and not self.pdf_files:
+        if WINDOWS_DND_ENABLED and not self.pdf_files:
             self.file_listbox.insert(tk.END, "여기에 PDF 파일을 드래그앤드롭하세요")
             self.file_listbox.itemconfig(0, {'fg': 'gray'})
         else:
