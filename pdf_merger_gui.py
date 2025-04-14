@@ -4,10 +4,14 @@ from tkinter import filedialog, messagebox
 from PyPDF2 import PdfMerger, PdfReader, PdfWriter
 import customtkinter as ctk
 import platform
+from tkinterdnd2 import DND_FILES, TkinterDnD
 
 class PDFMergerApp:
     def __init__(self):
-        self.root = ctk.CTk()
+        if platform.system() == "Windows":
+            self.root = TkinterDnD.Tk()
+        else:
+            self.root = ctk.CTk()
         self.root.title("PDF 도구")
         self.root.geometry("600x500")
         
@@ -20,9 +24,10 @@ class PDFMergerApp:
         
         # Windows에서만 드래그앤드롭 이벤트 바인딩
         if platform.system() == "Windows":
-            self.file_listbox.bind('<Drop>', self.handle_drop)
-            self.file_listbox.bind('<DragEnter>', self.handle_drag_enter)
-            self.file_listbox.bind('<DragLeave>', self.handle_drag_leave)
+            self.file_listbox.drop_target_register(DND_FILES)
+            self.file_listbox.dnd_bind('<<Drop>>', self.handle_drop)
+            self.file_listbox.dnd_bind('<<DragEnter>>', self.handle_drag_enter)
+            self.file_listbox.dnd_bind('<<DragLeave>>', self.handle_drag_leave)
     
     def setup_ui(self):
         # 파일 선택 프레임
