@@ -6,6 +6,8 @@ import customtkinter as ctk
 import platform
 import shutil
 import tempfile
+import atexit
+import gc
 
 # Windows에서만 windnd를 import 시도
 WINDOWS_DND_ENABLED = False
@@ -27,7 +29,7 @@ class PDFMergerApp:
         ctk.set_default_color_theme("blue")
         
         self.pdf_files = []
-        self.temp_dir = tempfile.mkdtemp()  # 임시 디렉토리 생성
+        self._setup_temp_directory()
         
         self.setup_ui()
         
@@ -37,13 +39,50 @@ class PDFMergerApp:
             
         # 프로그램 종료 시 임시 파일 정리
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        atexit.register(self.cleanup_temp_files)
     
-    def on_closing(self):
+    def _setup_temp_directory(self):
+        """임시 디렉토리 설정 및 이전 임시 파일 정리"""
         try:
-            if os.path.exists(self.temp_dir):
-                shutil.rmtree(self.temp_dir, ignore_errors=True)
+            self.temp_dir = tempfile.mkdtemp(prefix="pdf_merger_")
+            # 이전 임시 디렉토리 정리
+            temp_root = tempfile.gettempdir()
+            for item in os.listdir(temp_root):
+                if item.startswith("pdf_merger_"):
+                    try:
+                        full_path = os.path.join(temp_root, item)
+                        if os.path.isdir(full_path):
+                            shutil.rmtree(full_path, ignore_errors=True)
+                    except Exception as e:
+                        print(f"이전 임시 디렉토리 정리 중 오류: {e}")
         except Exception as e:
-            print(f"임시 파일 정리 중 오류 발생: {e}")
+            print(f"임시 디렉토리 설정 중 오류: {e}")
+            self.temp_dir = None
+
+    def cleanup_temp_files(self):
+        """임시 파일 및 디렉토리 정리"""
+        try:
+            # 열린 파일 핸들러 정리
+            gc.collect()
+            
+            if hasattr(self, 'temp_dir') and self.temp_dir and os.path.exists(self.temp_dir):
+                # Windows의 경우 여러 번 시도
+                max_attempts = 3 if platform.system() == "Windows" else 1
+                for _ in range(max_attempts):
+                    try:
+                        shutil.rmtree(self.temp_dir, ignore_errors=True)
+                        if not os.path.exists(self.temp_dir):
+                            break
+                    except Exception:
+                        gc.collect()
+                        continue
+        except Exception as e:
+            print(f"임시 파일 정리 중 오류: {e}")
+
+    def on_closing(self):
+        """프로그램 종료 처리"""
+        try:
+            self.cleanup_temp_files()
         finally:
             self.root.destroy()
     
@@ -229,18 +268,30 @@ class PDFMergerApp:
         if not output_file:
             return
         
+        merger = None
         try:
             merger = PdfMerger()
-            for pdf in self.pdf_files:
-                merger.append(pdf)
+            # Windows에서는 파일을 명시적으로 열고 닫기
+            if platform.system() == "Windows":
+                for pdf in self.pdf_files:
+                    with open(pdf, 'rb') as file:
+                        merger.append(file)
+            else:
+                for pdf in self.pdf_files:
+                    merger.append(pdf)
             
-            merger.write(output_file)
-            merger.close()
+            with open(output_file, 'wb') as output:
+                merger.write(output)
             
             messagebox.showinfo("성공", "PDF 파일이 성공적으로 병합되었습니다.")
             
         except Exception as e:
             messagebox.showerror("오류", f"PDF 병합 중 오류가 발생했습니다:\n{str(e)}")
+        finally:
+            if merger:
+                merger.close()
+                del merger
+            gc.collect()  # 명시적으로 가비지 컬렉션 실행
     
     def split_pdf(self):
         if not self.pdf_files:
@@ -252,10 +303,16 @@ class PDFMergerApp:
             return
         
         pdf_file = self.pdf_files[0]
+        reader = None
         
         try:
-            # PDF 파일 읽기
-            reader = PdfReader(pdf_file)
+            # Windows에서는 파일을 명시적으로 열기
+            if platform.system() == "Windows":
+                pdf_handle = open(pdf_file, 'rb')
+                reader = PdfReader(pdf_handle)
+            else:
+                reader = PdfReader(pdf_file)
+            
             total_pages = len(reader.pages)
             
             # 분리할 페이지 범위 입력 다이얼로그
@@ -282,7 +339,6 @@ class PDFMergerApp:
             
             remaining_pages = sorted(all_pages - selected_pages)
             if remaining_pages:
-                # 연속된 페이지를 하나의 범위로 묶기
                 current_range = [remaining_pages[0], remaining_pages[0]]
                 for page in remaining_pages[1:]:
                     if page == current_range[1] + 1:
@@ -297,7 +353,6 @@ class PDFMergerApp:
             if not output_dir:
                 return
             
-            # 파일 이름 기반으로 출력 파일 이름 생성
             base_name = os.path.splitext(os.path.basename(pdf_file))[0]
             
             # 각 범위별로 PDF 파일 생성
@@ -313,11 +368,19 @@ class PDFMergerApp:
                 
                 with open(output_file, "wb") as output:
                     writer.write(output)
+                    writer.close()
+                del writer
             
             messagebox.showinfo("성공", "PDF 파일이 성공적으로 분리되었습니다.")
             
         except Exception as e:
             messagebox.showerror("오류", f"PDF 분리 중 오류가 발생했습니다:\n{str(e)}")
+        finally:
+            if platform.system() == "Windows" and 'pdf_handle' in locals():
+                pdf_handle.close()
+            if reader:
+                del reader
+            gc.collect()  # 명시적으로 가비지 컬렉션 실행
     
     def parse_page_ranges(self, page_range, total_pages):
         try:
