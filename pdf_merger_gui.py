@@ -4,14 +4,14 @@ from tkinter import filedialog, messagebox
 from PyPDF2 import PdfMerger, PdfReader, PdfWriter
 import customtkinter as ctk
 import platform
-from tkinterdnd2 import DND_FILES, TkinterDnD
+
+# Windows에서만 windnd를 import
+if platform.system() == "Windows":
+    import windnd
 
 class PDFMergerApp:
     def __init__(self):
-        if platform.system() == "Windows":
-            self.root = TkinterDnD.Tk()
-        else:
-            self.root = ctk.CTk()
+        self.root = ctk.CTk()
         self.root.title("PDF 도구")
         self.root.geometry("600x500")
         
@@ -22,12 +22,9 @@ class PDFMergerApp:
         self.pdf_files = []
         self.setup_ui()
         
-        # Windows에서만 드래그앤드롭 이벤트 바인딩
+        # Windows에서만 드래그앤드롭 설정
         if platform.system() == "Windows":
-            self.file_listbox.drop_target_register(DND_FILES)
-            self.file_listbox.dnd_bind('<<Drop>>', self.handle_drop)
-            self.file_listbox.dnd_bind('<<DragEnter>>', self.handle_drag_enter)
-            self.file_listbox.dnd_bind('<<DragLeave>>', self.handle_drag_leave)
+            windnd.hook_dropfiles(self.file_listbox, func=self.handle_drop)
     
     def setup_ui(self):
         # 파일 선택 프레임
@@ -131,6 +128,18 @@ class PDFMergerApp:
         
         if files:
             self.pdf_files.extend(files)
+            self.update_file_list()
+    
+    def handle_drop(self, files):
+        valid_files = []
+        for file in files:
+            # windnd는 bytes로 경로를 반환하므로 디코딩 필요
+            file_path = file.decode('gbk')  # 한글 Windows의 경우 'gbk' 인코딩 사용
+            if file_path.lower().endswith('.pdf'):
+                valid_files.append(file_path)
+        
+        if valid_files:
+            self.pdf_files.extend(valid_files)
             self.update_file_list()
     
     def update_file_list(self):
@@ -303,31 +312,6 @@ class PDFMergerApp:
         except Exception as e:
             print(f"페이지 범위 파싱 오류: {str(e)}")
             return None
-    
-    def handle_drag_enter(self, event):
-        self.file_listbox.configure(bg="#3b3b3b")
-        return True
-    
-    def handle_drag_leave(self, event):
-        self.file_listbox.configure(bg="#2b2b2b")
-        return True
-    
-    def handle_drop(self, event):
-        self.file_listbox.configure(bg="#2b2b2b")
-        
-        # Windows에서 파일 경로 처리
-        files = event.data.split()
-        valid_files = []
-        
-        for file in files:
-            if file.lower().endswith('.pdf'):
-                valid_files.append(file)
-        
-        if valid_files:
-            self.pdf_files.extend(valid_files)
-            self.update_file_list()
-        
-        return True
     
     def run(self):
         self.root.mainloop()
