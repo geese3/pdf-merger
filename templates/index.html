@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDF 병합기</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        background-color: white;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        color: #333;
+        text-align: center;
+        margin-bottom: 30px;
+      }
+      .upload-area {
+        border: 2px dashed #ccc;
+        padding: 40px;
+        text-align: center;
+        margin-bottom: 20px;
+        border-radius: 5px;
+        background-color: #fafafa;
+        cursor: pointer;
+      }
+      .upload-area:hover {
+        border-color: #666;
+      }
+      .btn {
+        background-color: #4caf50;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        width: 100%;
+      }
+      .btn:hover {
+        background-color: #45a049;
+      }
+      .file-list {
+        margin-top: 20px;
+      }
+      .file-item {
+        background-color: #f8f8f8;
+        padding: 10px;
+        margin-bottom: 5px;
+        border-radius: 5px;
+      }
+      .flash-message {
+        padding: 10px;
+        margin-bottom: 20px;
+        border-radius: 5px;
+        text-align: center;
+      }
+      .error {
+        background-color: #ffebee;
+        color: #c62828;
+      }
+      .success {
+        background-color: #e8f5e9;
+        color: #2e7d32;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>PDF 병합기</h1>
+
+      {% with messages = get_flashed_messages() %} {% if messages %} {% for
+      message in messages %}
+      <div
+        class="flash-message {% if '오류' in message %}error{% else %}success{% endif %}"
+      >
+        {{ message }}
+      </div>
+      {% endfor %} {% endif %} {% endwith %}
+
+      <form
+        action="{{ url_for('merge_pdfs') }}"
+        method="post"
+        enctype="multipart/form-data"
+      >
+        <div
+          class="upload-area"
+          onclick="document.getElementById('file-input').click()"
+        >
+          <p>여기를 클릭하거나 PDF 파일을 드래그하여 업로드하세요</p>
+          <input
+            type="file"
+            id="file-input"
+            name="files[]"
+            multiple
+            accept=".pdf"
+            style="display: none"
+            onchange="updateFileList()"
+          />
+        </div>
+
+        <div class="file-list" id="file-list">
+          <!-- 선택된 파일 목록이 여기에 표시됩니다 -->
+        </div>
+
+        <button type="submit" class="btn">PDF 병합하기</button>
+      </form>
+    </div>
+
+    <script>
+      function updateFileList() {
+        const fileList = document.getElementById("file-list");
+        const files = document.getElementById("file-input").files;
+
+        fileList.innerHTML = "";
+
+        for (let i = 0; i < files.length; i++) {
+          const fileItem = document.createElement("div");
+          fileItem.className = "file-item";
+          fileItem.textContent = `${i + 1}. ${files[i].name}`;
+          fileList.appendChild(fileItem);
+        }
+      }
+
+      // 드래그 앤 드롭 이벤트 처리
+      const uploadArea = document.querySelector(".upload-area");
+
+      ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
+        uploadArea.addEventListener(eventName, preventDefaults, false);
+      });
+
+      function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
+      ["dragenter", "dragover"].forEach((eventName) => {
+        uploadArea.addEventListener(eventName, highlight, false);
+      });
+
+      ["dragleave", "drop"].forEach((eventName) => {
+        uploadArea.addEventListener(eventName, unhighlight, false);
+      });
+
+      function highlight(e) {
+        uploadArea.classList.add("highlight");
+      }
+
+      function unhighlight(e) {
+        uploadArea.classList.remove("highlight");
+      }
+
+      uploadArea.addEventListener("drop", handleDrop, false);
+
+      function handleDrop(e) {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        document.getElementById("file-input").files = files;
+        updateFileList();
+      }
+    </script>
+  </body>
+</html>
